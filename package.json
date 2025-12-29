@@ -1,0 +1,13 @@
+{
+    "name": "chainscout",
+    "version": "1.0.0",
+    "description": "dApp Scout - Cross-chain DApp Analytics Platform",
+    "private": true,
+    "scripts": {
+        "dev": "cd frontend && npm run dev",
+        "build": "cd frontend && npm run build",
+        "start": "cd frontend && npm run start",
+        "firebase:deploy": "firebase deploy",
+        "firebase:emulators": "firebase emulators:start"
+    }
+}

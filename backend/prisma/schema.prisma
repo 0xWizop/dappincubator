@@ -1,0 +1,276 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// CORE ENTITIES
+// ============================================
+
+model DApp {
+  id               String    @id @default(uuid())
+  name             String
+  slug             String    @unique
+  description      String?
+  website          String?
+  twitter          String?
+  discord          String?
+  logo             String?
+  chains           Chain[]
+  category         Category
+  contractAddresses Json     @default("[]") // Array of {chain, address}
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  // Relations
+  metrics          DAppMetrics[]
+  trendScores      TrendScore[]
+  sponsoredListings SponsoredListing[]
+  watchlistItems   WatchlistItem[]
+
+  @@index([category])
+  @@index([isActive])
+}
+
+model DAppMetrics {
+  id               String   @id @default(uuid())
+  dappId           String
+  dapp             DApp     @relation(fields: [dappId], references: [id], onDelete: Cascade)
+  date             DateTime @db.Date
+  chain            Chain
+  dailyActiveWallets Int    @default(0)
+  dailyTxCount     Int      @default(0)
+  volumeUsd        Float    @default(0)
+  tvlUsd           Float    @default(0)
+  twitterFollowers Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  @@unique([dappId, date, chain])
+  @@index([date])
+  @@index([chain])
+}
+
+model TrendScore {
+  id                  String    @id @default(uuid())
+  dappId              String
+  dapp                DApp      @relation(fields: [dappId], references: [id], onDelete: Cascade)
+  date                DateTime  @db.Date
+  walletGrowth7d      Float     @default(0)
+  walletGrowth30d     Float     @default(0)
+  txGrowth7d          Float     @default(0)
+  txGrowth30d         Float     @default(0)
+  volumeAcceleration  Float     @default(0)
+  socialGrowth        Float     @default(0)
+  trendScore          Float     @default(0)
+  aiSignal            AISignal  @default(DORMANT)
+  createdAt           DateTime  @default(now())
+
+  @@unique([dappId, date])
+  @@index([date])
+  @@index([trendScore])
+  @@index([aiSignal])
+}
+
+// ============================================
+// USER & AUTH
+// ============================================
+
+model User {
+  id               String       @id @default(uuid())
+  email            String       @unique
+  passwordHash     String
+  name             String?
+  tier             UserTier     @default(FREE)
+  stripeCustomerId String?      @unique
+  emailVerified    Boolean      @default(false)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Relations
+  subscriptions    Subscription[]
+  alerts           Alert[]
+  notifications    Notification[]
+  watchlist        WatchlistItem[]
+  apiKeys          ApiKey[]
+
+  @@index([tier])
+}
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  userId               String
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String             @unique
+  stripePriceId        String
+  status               SubscriptionStatus
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([status])
+}
+
+// ============================================
+// ALERTS & NOTIFICATIONS
+// ============================================
+
+model Alert {
+  id            String        @id @default(uuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  type          AlertType
+  conditions    Json          // Flexible JSON for alert conditions
+  isActive      Boolean       @default(true)
+  lastTriggered DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  notifications Notification[]
+
+  @@index([isActive])
+  @@index([type])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertId   String?
+  alert     Alert?   @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+// ============================================
+// MONETIZATION
+// ============================================
+
+model SponsoredListing {
+  id              String                  @id @default(uuid())
+  dappId          String
+  dapp            DApp                    @relation(fields: [dappId], references: [id], onDelete: Cascade)
+  category        Category
+  position        Int                     @default(1) // 1 = top position
+  startDate       DateTime
+  endDate         DateTime
+  status          SponsoredStatus         @default(PENDING)
+  paymentIntentId String?
+  amountPaid      Float                   @default(0)
+  contactEmail    String
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@index([category, status])
+  @@index([startDate, endDate])
+}
+
+model ApiKey {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key         String   @unique
+  name        String
+  rateLimit   Int      @default(1000) // requests per day
+  lastUsedAt  DateTime?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@index([key])
+  @@index([isActive])
+}
+
+// ============================================
+// USER FEATURES
+// ============================================
+
+model WatchlistItem {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dappId    String
+  dapp      DApp     @relation(fields: [dappId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, dappId])
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum Chain {
+  ETHEREUM
+  BASE
+  SOLANA
+  ARBITRUM
+  OPTIMISM
+  POLYGON
+  BNB
+}
+
+enum Category {
+  DEX
+  LENDING
+  NFT
+  GAMEFI
+  LAUNCHPAD
+  BRIDGE
+  AI
+  INFRASTRUCTURE
+  MEME
+  SOCIAL
+  DAO
+  YIELD
+  DERIVATIVES
+  OTHER
+}
+
+enum AISignal {
+  DORMANT
+  RISING
+  BREAKOUT
+  DECLINING
+}
+
+enum UserTier {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+  TRIALING
+}
+
+enum AlertType {
+  BREAKOUT
+  GROWTH_THRESHOLD
+  CATEGORY_SIGNAL
+  CUSTOM
+}
+
+enum SponsoredStatus {
+  PENDING
+  APPROVED
+  ACTIVE
+  EXPIRED
+  REJECTED
+}
